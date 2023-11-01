@@ -2,6 +2,9 @@ from pyspark.sql import DataFrame
 from pyspark.sql import functions as f
 from pyspark.sql import SparkSession
 
+
+from pyspark.sql import Window
+
 # dfZipWithIndex helper function
 from pyspark.sql.types import LongType, StructField, StructType
 
@@ -68,7 +71,7 @@ class Catalog:
 
         self._anon = self._is_anon(path)
         spark = self._spark
-        spark.sparkContext.setJobDescription("test desc 1")
+        # spark.sparkContext.setJobDescription("test desc 1")
         df = (self._spark.read
             .format("binaryFile")
             .option("pathGlobFilter",      pattern)
@@ -144,26 +147,21 @@ class Catalog:
                 
             )
 
-    def _dfZipWithIndex (spark, df, offset=1, colName="rowId"):
+
+
+    def _dfZipWithIndex(df, offset=1, colName="rowId"):
         '''
-            Ref: https://stackoverflow.com/questions/30304810/dataframe-ified-zipwithindex
-            Enumerates dataframe rows is native order, like rdd.ZipWithIndex(), but on a dataframe 
-            and preserves a schema
-
-            :param df: source dataframe
-            :param offset: adjustment to zipWithIndex()'s index
-            :param colName: name of the index column
+        Enumerates dataframe rows in native order, like RDD's zipWithIndex, but on a DataFrame and preserves the schema.
+    
+        :param df: source dataframe
+        :param offset: adjustment to row_number()'s index
+        :param colName: name of the index column
         '''
+      
+        windowSpec = Window.orderBy(f.lit('A'))  # Placeholder ordering as we want to keep the original order
+        df_with_index = df.withColumn(colName, f.row_number().over(windowSpec) + offset - 1)
+        return df_with_index.repartition(Catalog.CATALOG_PARTITIONS)  # Assuming Catalog.CATALOG_PARTITIONS is defined
 
-        new_schema = StructType(
-                        [StructField(colName,LongType(),True)]        # new added field in front
-                        + df.schema.fields                            # previous schema
-                    )
-
-        zipped_rdd = df.rdd.zipWithIndex()
-
-        new_rdd = zipped_rdd.map(lambda row: ([row[1] +offset] + list(row[0])))
-        return spark.createDataFrame(new_rdd, new_schema).repartition(Catalog.CATALOG_PARTITIONS)
 
 
 if __name__ == "__main__":
